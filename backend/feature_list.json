@@ -1,0 +1,198 @@
+{
+  "project": "entel-role-repository-backend",
+  "description": "Migración de JSF 2.2 + PrimeFaces 5.2 + Spring 4 + EclipseLink JPA sobre MySQL 5.6 (sistema WiseVision Role Repository Basic, cliente Entel) a Quarkus 3.x + Java 21, reactivo (SmallRye Mutiny) de punta a punta, DynamoDB vía LocalStack (esquema diseñado en el track ../database/), Kafka para reportes 100% asíncronos con notificación SSE, AWS Secrets Manager/KMS para secretos. Generado a partir de docs/migration-plan.md siguiendo docs/plan-to-features.md. Corregido 09-ago-2026: sin R2DBC (no aplica a DynamoDB), reportes async-first en vez de un endpoint síncrono intermedio, diseño de esquema DynamoDB movido al track database. Corregido 16-ago-2026: la feature original 'reportes_generacion_async_kafka' se dividió en tres (7, 8, 9 — ensamblado de datos sin duplicados / adaptadores PDF-Excel / orquestación Kafka) por regla 4 de docs/plan-to-features.md (mezclaba más de 3-4 archivos no triviales y varias preocupaciones distintas); features 8-11 originales se renumeraron a 10-13.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": [
+      "pending",
+      "in_progress",
+      "done",
+      "blocked"
+    ]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "bootstrap_quarkus_reactive_project",
+      "title": "Bootstrap del proyecto Quarkus 3.x reactivo sobre Java 21",
+      "description": "Crear el esqueleto del proyecto con `quarkus create app pe.edu.cibertec.proyemp:entel-role-repository-backend` (Java 21), extensiones: resteasy-reactive-jackson, smallrye-mutiny, amazon-dynamodb, smallrye-reactive-messaging-kafka. Endpoint /q/health responde 200. Sin lógica de dominio todavía.",
+      "acceptance": [
+        "pom.xml fija java.version=21 y usa el BOM de Quarkus 3.x",
+        "Existe al menos un @Path REST que devuelve Uni<Response>, probando que el modelo reactivo compila y responde",
+        "GET /q/health devuelve 200 con mvn quarkus:dev corriendo",
+        "mvn clean compile sin errores",
+        "mvn test sin errores (aunque sea un único test smoke)"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "setup_localstack_dynamodb_secretsmanager",
+      "title": "docker-compose con LocalStack (DynamoDB + Secrets Manager + KMS) y cliente async configurado",
+      "description": "docker-compose.yml levanta LocalStack con servicios dynamodb, secretsmanager, kms. application.properties (perfil dev/test) apunta el DynamoDbAsyncClient de Quarkus al endpoint de LocalStack. Ningún endpoint ni credencial de AWS real en el repo. El diseño lógico de las tablas (nombres, PK/SK) es el de ../database/docs/architecture.md — esta feature solo prueba conectividad, no crea el esquema definitivo.",
+      "acceptance": [
+        "docker-compose up -d localstack deja el servicio healthy",
+        "Un test de integración (@QuarkusTest) escribe y lee un item de prueba usando DynamoDbAsyncClient envuelto en Uni contra LocalStack",
+        "Un test de integración guarda y lee un secreto de prueba en Secrets Manager emulado por LocalStack",
+        "No hay ninguna access key/secret key de AWS real en application.properties ni en el código (solo las dummy de LocalStack, ej. test/test)",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "crud_catalogos_simples",
+      "title": "CRUD reactivo de Área, Cargo, Ubicación, Aplicación, Estado",
+      "description": "Endpoints REST reactivos (Uni/Multi) para los 5 catálogos simples, paridad funcional con los managed beans legacy (AreaManagedBean, CargoManagedBean, UbicacionManagedBean, AplicacionManagedBean). DEPENDE de ../database/feature_list.json → feature 2 (design_dynamodb_schema) done — si no lo está, marcar esta feature blocked citando esa dependencia en vez de inventar un esquema propio.",
+      "acceptance": [
+        "../database/feature_list.json confirma design_dynamodb_schema en status done antes de empezar (o esta feature queda blocked)",
+        "GET/POST/PUT existen para /api/areas, /api/cargos, /api/ubicaciones, /api/aplicaciones, /api/estados, usando exactamente el esquema de tablas de ../database/docs/architecture.md",
+        "Cada servicio usa Uni<T>/Multi<T>, ninguna llamada bloqueante directa a DynamoDB",
+        "Tests de integración contra LocalStack cubren crear + buscar por código para los 5 catálogos",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "crud_rol_suministro_atributo",
+      "title": "Cadena de dominio Rol → Suministro → Atributo → Detalle (4 categorías)",
+      "description": "Migrar RolManagedBean, SuministroManagedBean, AtributoManagedBean, DetalleManagedBean: CRUD de Rol (con relación a Cargo/Ubicacion/Area), Suministro asociado a Rol, Atributo asociado a Aplicacion/Rol/Suministro/Estado, y las 4 sub-vistas de Detalle (Roles/Grupos/Inbox/DefaultInbox tal como en paginas/*/grupos.xhtml, inbox.xhtml, defaultinbox.xhtml).",
+      "acceptance": [
+        "Endpoint que replica CargoRepository.findCargo(aplicacion, area) devolviendo los roles correctos",
+        "Endpoint que replica AtributoRepository.findAppArea2(aplicacion, area, cargo)",
+        "Las 4 categorías de suministro (ROL/GRUPO/INBOX/DEFAULTINBOX) son consultables independientemente, igual que las 4 xhtml del legacy",
+        "Tests de integración contra LocalStack para cada endpoint nuevo",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "usuario_login_password_hash_fix",
+      "title": "Migrar Usuario/Login con hashing de contraseñas (sin Cripto.java)",
+      "description": "Migrar UsuarioManagedBean/LoginManagedBean a endpoints REST reactivos. Reemplazar el cifrado reversible AES/ECB de util/Cripto.java por hash de una vía (BCrypt vía at.favre.lib:bcrypt). NO portar Cripto.java. Endpoint de login valida hash, nunca compara contraseñas en texto plano ni descifra nada.",
+      "acceptance": [
+        "No existe ninguna clase Cripto.java ni uso de Cipher.getInstance(\"AES/ECB/...\") en el proyecto nuevo",
+        "Las contraseñas se guardan como hash BCrypt (prefijo $2 verificable en el dato guardado durante el test)",
+        "Existe un test que verifica que dos usuarios con la misma contraseña tienen hashes distintos (salt), y que el login falla con contraseña incorrecta",
+        "docs/migration-plan.md §4 se actualiza si se define el mecanismo final de reseteo de contraseñas existentes",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "name": "menu_dinamico_por_tipo_usuario",
+      "title": "Endpoint de menú dinámico (Menu) filtrado por tipoUsuario",
+      "description": "Migrar la entidad Menu (codigo, nombre, tipo, tipoUsuario, cod_submenu, estado, action) y exponer GET /api/menu/{tipoUsuario} devolviendo el árbol de menú correspondiente, reemplazando MenuController.java del legacy.",
+      "acceptance": [
+        "GET /api/menu/{tipoUsuario} devuelve solo los ítems de menú con ese tipoUsuario y estado activo",
+        "La relación cod_submenu arma correctamente la jerarquía padre/hijo en la respuesta JSON",
+        "Test de integración contra LocalStack con al menos 2 tipos de usuario distintos verificando que el menú difiere",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "name": "reportes_dominio_y_query_sin_duplicados",
+      "title": "Dominio Reporte y ensamblado de la consulta Cargo→Rol→4 categorías sin duplicados",
+      "description": "Corregido 16-ago-2026 (dividida de la antigua feature 7 única 'reportes_generacion_async_kafka' por regla 4 de docs/plan-to-features.md — mezclaba ensamblado de datos + adaptadores PDF/Excel + Kafka en una sola feature). Migrar la estructura de datos que arma ReporteManagedBean.reporte() (Cargo→Rol→4 categorías de suministro: Roles/Grupos/Inbox/DefaultInbox, DTOs equivalentes a Reporte/DetalleRol del legacy) como un service reactivo (Uni<List<Reporte>>) que reutiliza los repositorios ya existentes de Cargo (feature 3) y Rol/Suministro/Atributo/Detalle (feature 4). Sin Kafka, sin PDF/Excel, sin endpoint HTTP propio todavía — esta feature solo deja lista y probada la lógica de ensamblado de datos que las features 8 y 9 van a reutilizar. Corrige en origen el bug de duplicados de ReporteManagedBean.reporte()/imprimir() (`hs.addAll(cargos); cargos.clear(); cargos.addAll(hs)`, documentado en docs/migration-plan.md §3.5): la query nueva no debe generar duplicados que luego haya que limpiar con un Set.",
+      "acceptance": [
+        "Existe un service (ej. ReporteService/ReporteAssembler) que devuelve Uni<List<Reporte>> con la estructura Cargo→Rol→(Roles/Grupos/Inbox/DefaultInbox), reutilizando los repositorios de las features 3 y 4 sin duplicar su lógica de acceso a datos",
+        "El resultado no contiene cargos/roles duplicados con datos de prueba que en el legacy sí producirían duplicados (mismo escenario que forzaba el HashSet del legacy) — sin deduplicar con un Set después de la query, la corrección está en cómo se arma la consulta",
+        "Test de integración contra LocalStack confirma la estructura completa Cargo→Rol→4 categorías con datos reales creados vía los repositorios/endpoints de las features 3/4",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "name": "reportes_adaptadores_pdf_excel",
+      "title": "Puerto ReportGeneratorPort + adaptadores PDF (iText/OpenPDF) y Excel (Apache POI) en memoria",
+      "description": "Corregido 16-ago-2026 (dividida de la antigua feature 7 única, ver nota en la feature 7). Definir report/ReportGeneratorPort (puerto — docs/architecture.md: 'report/ReportGeneratorPort es la única interfaz que conoce service/ para generar reportes') con dos adaptadores: PdfReportAdapter (iText u OpenPDF — decidir y documentar la licencia elegida, ver docs/conventions.md §Dependencias) y ExcelReportAdapter (Apache POI vigente, HSSFWorkbook/XSSFWorkbook), que reciben la estructura List<Reporte> de la feature 7 y producen un ByteArrayOutputStream en memoria — nunca un archivo en disco del servidor, nunca Runtime.exec (corrige en origen ReporteManagedBean.imprimir(), que escribía a C:/repositorio/wisevision/pdf/ y abría el archivo con Runtime.getRuntime().exec('rundll32 url.dll,FileProtocolHandler ...'), documentado en docs/migration-plan.md §3.2). El trabajo de iText/POI es bloqueante (sin API reactiva) — se invoca con .emitOn(Infrastructure.getDefaultWorkerPool()) antes de tocar esas APIs, documentado con un comentario explicando por qué. Sin Kafka todavía — esta feature prueba los adaptadores de forma aislada, invocándolos directo desde un test, no desde un consumer.",
+      "acceptance": [
+        "report/ReportGeneratorPort define el contrato (ej. Uni<byte[]> generarPdf(List<Reporte>) / generarExcel(List<Reporte>)), y cualquier service/ que lo use solo conoce este puerto, nunca iText/POI directamente",
+        "PdfReportAdapter y ExcelReportAdapter producen bytes válidos y no vacíos a partir de una lista de Reporte de prueba, verificado con un test que abre el PDF/Excel generado (con la propia librería) y confirma que contiene datos reconocibles de la estructura Cargo→Rol→4 categorías",
+        "No existe ningún FileOutputStream a una ruta fija ni Runtime.getRuntime().exec en el código nuevo",
+        "El trabajo bloqueante de iText/POI está offloadeado vía .emitOn(Infrastructure.getDefaultWorkerPool()) (o equivalente), nunca ejecutado directo en el event loop de Vert.x",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "name": "reportes_generacion_async_kafka",
+      "title": "Orquestación asíncrona vía Kafka: POST /api/reportes/generar → report.requested → worker → report.ready",
+      "description": "Corregido 09-ago-2026: NO se implementa un endpoint síncrono de descarga directa. Corregido 16-ago-2026 (dividida de la antigua feature 7 única, ver nota en la feature 7 — esta es la sub-feature de orquestación Kafka en sí). POST /api/reportes/generar publica de inmediato un evento report.requested (SmallRye Reactive Messaging) y responde 202 Accepted + id. Un @Incoming consumer (mismo servicio) procesa el reporte usando el service de ensamblado de la feature 7 y los adaptadores PdfReportAdapter/ExcelReportAdapter de la feature 8 (sin duplicar la lógica de ninguna de las dos), y al terminar publica report.ready. El resultado (bytes del PDF/Excel + la estructura List<Reporte> en JSON — la feature 10, GET /api/reportes/{id}, necesita leer esta misma estructura, ver su acceptance sobre el contrato con ../frontend/) se persiste asociado al id con un estado (PENDIENTE/LISTO/ERROR) para que la feature 10 (SSE + descarga + consulta de árbol) lo sirva sin rediseñar la persistencia.",
+      "acceptance": [
+        "POST /api/reportes/generar devuelve 202 Accepted + id inmediatamente, nunca el binario en esa misma respuesta",
+        "El consumer usa @Incoming reactivo, reutiliza el ensamblado de la feature 7 y los adaptadores de la feature 8 sin duplicar su lógica, y no bloquea el hilo del broker",
+        "El resultado persistido incluye tanto el binario generado como la estructura List<Reporte> (JSON) recuperable por id, con un estado PENDIENTE/LISTO/ERROR — diseño documentado en progress/current.md, listo para que la feature 10 lo consuma sin rediseñar la persistencia",
+        "Tópicos report.requested/report.ready documentados en docs/architecture.md",
+        "Test de integración con Kafka embebido (Quarkus Dev Services) que publica la solicitud vía POST /api/reportes/generar y verifica que el worker consume report.requested, genera el resultado, y publica report.ready",
+        "No existe ningún FileOutputStream a una ruta fija ni Runtime.getRuntime().exec en el código nuevo de esta feature",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 10,
+      "name": "reportes_notificacion_sse_y_descarga",
+      "title": "Notificación en tiempo real (SSE) y descarga del reporte listo",
+      "description": "GET /api/reportes/eventos expone un stream SSE (Multi<ReporteEvento>, @RestStreamElementType(MediaType.SERVER_SENT_EVENTS)) que empuja un evento al frontend en cuanto el worker de la feature 9 consume report.ready — sin que el cliente haga polling. GET /api/reportes/{id}/descargar sirve el binario ya generado (desde donde el worker lo dejó disponible) con Content-Disposition: attachment. Corregido 16-ago-2026 (contrato cruzado con ../frontend/, ver docs/migration-plan.md): también expone GET /api/reportes/{id} devolviendo la estructura Reporte (árbol Cargo→Rol→4 categorías, misma forma que el DTO DetalleRol/Reporte del legacy) en JSON, para poblar la tabla en pantalla una vez el reporte está LISTO — los otros tres endpoints (generar/eventos/descargar) solo devuelven un id, un evento o el binario, ninguno la estructura tabulable. ../frontend/src/api/reportes.ts ya consume este endpoint (lo documentó como extrapolación propia, no contrato confirmado, en 3 sitios incluyendo su progress/current.md) — este backend debe igualar esa forma exacta o, si se diseña distinto, avisar explícitamente al Leader de ../frontend/ antes de cerrar esta feature.",
+      "acceptance": [
+        "GET /api/reportes/eventos mantiene la conexión abierta y emite un evento JSON por cada report.ready, verificable con un test que se suscribe al Multi y verifica la emisión tras publicar un evento de prueba",
+        "GET /api/reportes/{id}/descargar devuelve 404 si el id no existe o aún no está LISTO, y el binario correcto si lo está",
+        "GET /api/reportes/{id} devuelve la estructura Reporte[] (árbol Cargo→Rol→4 categorías de suministro) en JSON cuando el reporte está LISTO, y 404 si el id no existe o aún no está listo — misma forma que espera ../frontend/src/api/reportes.ts (coordinado con el Leader de ../frontend/ el 16-ago-2026)",
+        "docs/architecture.md documenta por qué se eligió SSE sobre WebSocket (canal unidireccional)",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 11,
+      "name": "aws_secrets_manager_integration",
+      "title": "Reemplazar cualquier config hardcodeada por AWS Secrets Manager/KMS",
+      "description": "Auditar application.properties y docker-compose.yml introducidos en las features 1-10; mover cualquier credencial/endpoint sensible a Secrets Manager (emulado en LocalStack en dev/test), leído en el arranque de Quarkus. Documentar en docs/architecture.md qué secretos existen y cómo se resuelven en cada ambiente.",
+      "acceptance": [
+        "grep en el repo por patrones de credencial hardcodeada no encuentra ninguna fuera de los valores dummy de LocalStack en docker-compose.yml (test/test)",
+        "Al menos un secreto real de la app (ej. tabla/endpoint sensible) se lee desde Secrets Manager en tiempo de arranque, verificado con un test de integración",
+        "docs/architecture.md documenta la resolución de secretos por ambiente (dev = LocalStack, prod = AWS real, pendiente de credenciales productivas)",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 12,
+      "name": "reactive_resilience_observability",
+      "title": "Health checks, logging estructurado y resiliencia básica",
+      "description": "Health checks de Quarkus (readiness/liveness) para DynamoDB (LocalStack), Kafka y Secrets Manager. Logging estructurado (JBoss Logging) reemplazando cualquier System.out.println heredado. Manejo explícito de fallos de Uni (onFailure) en los endpoints principales, incluido el stream SSE (reconexión/cierre limpio si el cliente se desconecta).",
+      "acceptance": [
+        "GET /q/health/ready reporta DOWN si LocalStack/Kafka no están disponibles, UP si lo están",
+        "Cero System.out.println en src/main",
+        "Los endpoints de reportes y de escritura (POST/PUT) tienen manejo de error explícito que devuelve un código HTTP y mensaje claros ante fallo de DynamoDB/Kafka",
+        "El endpoint SSE cierra la conexión limpiamente sin excepción no controlada cuando el cliente se desconecta (test que simula la desconexión)",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 13,
+      "name": "reporte_final_mejoras",
+      "title": "Reporte final de mejoras de la migración backend",
+      "description": "Escribir MEJORAS.md en la raíz del proyecto backend resumiendo la migración completa.",
+      "acceptance": [
+        "MEJORAS.md enumera: bugs corregidos (antes/después, con referencia a docs/migration-plan.md §3)",
+        "Versiones de stack antes/después (Java 7/8→21, JSF/Spring/EclipseLink→Quarkus reactivo, MySQL→DynamoDB (esquema en ../database/), sin mensajería→Kafka, polling→SSE, secretos hardcodeados→AWS Secrets Manager/KMS)",
+        "Estado de seguridad: qué se arregló (Cripto.java eliminado, hashing BCrypt) y qué queda pendiente (estrategia de reseteo de contraseñas de usuarios reales, credenciales productivas)",
+        "Cobertura de tests agregada por feature",
+        "Recomendaciones no implementadas en este pase (ej. licencia final de iText vs OpenPDF si quedó pendiente, dimensionamiento real de Kafka una vez se confirme el volumen de uso)",
+        "Todas las features 1-12 están en status done antes de escribir este reporte"
+      ],
+      "status": "done"
+    }
+  ]
+}

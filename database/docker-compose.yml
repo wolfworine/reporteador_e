@@ -1,0 +1,27 @@
+# LocalStack para desarrollo/tests locales de la herramienta de migracion.
+# Regla dura (docs/architecture.md): la herramienta nunca se conecta a una
+# cuenta AWS real por defecto -- este DynamoDB es el target por defecto.
+services:
+  localstack:
+    image: localstack/localstack:3
+    container_name: entel-migration-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb
+      - DEBUG=0
+      - PERSISTENCE=0
+      - DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "curl -sf http://localhost:4566/_localstack/health | grep -q '\"dynamodb\": \"\\(available\\|running\\)\"'"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  localstack-data:

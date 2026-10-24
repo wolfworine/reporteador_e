@@ -1,0 +1,145 @@
+{
+  "project": "entel-role-repository-frontend",
+  "description": "Migración de las vistas JSF 2.2 + PrimeFaces (sistema WiseVision Role Repository Basic, cliente Entel) a una SPA React 19 + TypeScript + Vite, consumiendo la API REST reactiva de entel-role-repository-backend. Generado a partir de docs/migration-plan.md siguiendo docs/plan-to-features.md. Corregido 09-ago-2026: el flujo de reportes usa notificación push por SSE (EventSource), no polling.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "bootstrap_react_vite_project",
+      "title": "Bootstrap del proyecto React 19 + TypeScript + Vite",
+      "description": "Crear el esqueleto con `npm create vite@latest -- --template react-ts`, actualizar a React 19, configurar ESLint + Prettier + Vitest + React Testing Library. Página raíz placeholder.",
+      "acceptance": [
+        "package.json fija react/react-dom en versión 19.x",
+        "npm run build compila sin errores",
+        "npm test corre al menos un test smoke en verde",
+        "ESLint configurado y sin errores sobre el esqueleto inicial"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "api_client_and_types",
+      "title": "Cliente API tipado + interfaces TypeScript de los DTOs reales",
+      "description": "Crear api/client.ts (fetch wrapper con manejo uniforme de error y VITE_API_BASE_URL configurable) y types/ con interfaces TS espejo de las entidades reales: Area, Cargo, Ubicacion, Aplicacion, Rol, Suministro, Atributo, Detalle (con las 4 categorías), Usuario, Menu, Reporte/DetalleRol. Instalar y configurar TanStack Query (QueryClientProvider en app/).",
+      "acceptance": [
+        "Existe un archivo types/ por entidad con los campos reales confirmados en el código fuente del backend/legacy (no inventados)",
+        "api/client.ts centraliza la URL base y el manejo de errores HTTP (4xx/5xx) de forma consistente",
+        "QueryClientProvider envuelve la app en app/main.tsx o equivalente",
+        "Tests unitarios de api/client.ts mockeando fetch (éxito y error)",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "layout_login_menu_dinamico",
+      "title": "Layout base, pantalla de login y menú dinámico por tipo de usuario",
+      "description": "Componente de layout (header/sidebar/contenido), pantalla de login que llama al endpoint de autenticación del backend, y modules/menu que consume GET /api/menu/{tipoUsuario} y arma el árbol de navegación usando cod_submenu para la jerarquía padre/hijo, replicando MenuController.java.",
+      "acceptance": [
+        "Login llama al endpoint real (o mockeado si el backend aún no expone la feature 6 — documentar la dependencia en progress/current.md)",
+        "El menú se arma como árbol a partir de una respuesta plana usando cod_submenu, con test unitario que verifica el armado de jerarquía con datos de al menos 2 niveles",
+        "Layout renderiza el menú específico según el tipoUsuario simulado en el test",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "crud_catalogos_simples",
+      "title": "CRUD de Área, Cargo, Ubicación, Aplicación, Estado",
+      "description": "Páginas de mantenimiento (listar + filtrar por código/nombre, crear, modificar) para los 5 catálogos simples, replicando el alcance de paginas/area/mantenimiento.xhtml, cargo/, ubicacion/, aplicacion/ (solo la parte de catálogo, sin las sub-vistas de rol/suministro/atributo que van en la feature 5).",
+      "acceptance": [
+        "Existen las 5 páginas de mantenimiento con listar/crear/modificar usando useQuery/useMutation de TanStack Query",
+        "El filtro por código/nombre reproduce el comportamiento de los mantenimiento.xhtml legacy",
+        "Tests de componente (RTL) para al menos 2 de los 5 módulos cubriendo crear + listar con api mockeada",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "crud_rol_suministro_drilldown",
+      "title": "Rol (VerSuministro) y Suministro (VerAtributo) con navegación anidada",
+      "description": "Mantenimiento de Rol (con filtros por Área/Cargo/Tipo/Ámbito como en paginas/rol/mantenimiento.xhtml) y de Suministro, con la navegación de drill-down: desde un Rol de la tabla ir a sus Suministros, desde un Suministro ir a sus Atributos — replicando el flujo real (Aplicación → VerRol → Rol → VerSuministros → Suministro → VerAtributo).",
+      "acceptance": [
+        "Tabla de Rol tiene acción 'Ver Suministros' que navega mostrando solo los suministros del rol seleccionado (por id_rol)",
+        "Tabla de Suministro tiene acción 'Ver Atributo' equivalente",
+        "Test de componente que verifica que al navegar a VerSuministros solo aparecen los suministros filtrados por el rol correcto",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "name": "crud_atributo_detalle_tabs",
+      "title": "Atributo con las 4 pestañas Roles/Grupos/Inbox/DefaultInbox",
+      "description": "Componente de mantenimiento de Atributo con 4 pestañas (tabs), una por categoría, replicando paginas/*/grupos.xhtml, inbox.xhtml, defaultinbox.xhtml y la vista Roles por defecto. Cada pestaña es una tabla con crear/modificar propia, filtrable por atributo_codigo/atributo_nombre.",
+      "acceptance": [
+        "El componente AtributoTabs muestra las 4 categorías como pestañas, con la de Roles activa por defecto (paridad con el legacy)",
+        "Cada pestaña llama a su propio endpoint/filtro sin mezclar datos de otra categoría",
+        "Test de componente que verifica que cambiar de pestaña muestra los datos correctos de esa categoría (con api mockeada devolviendo datasets distintos por categoría)",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "name": "crud_usuario",
+      "title": "Mantenimiento de Usuario",
+      "description": "Página de mantenimiento de Usuario (crear/modificar, filtro por Nombre/Apellido/Email) replicando paginas/usuario/*.xhtml. El campo contraseña se envía solo en el request de creación/cambio, nunca se recibe ni se muestra en el listado.",
+      "acceptance": [
+        "El listado de usuarios nunca muestra ni recibe del backend el campo password/hash",
+        "El formulario de creación/edición envía la contraseña en texto plano solo dentro del body HTTPS del request (nunca en query string ni logueada en consola)",
+        "Test de componente que verifica que el listado no renderiza ningún campo de contraseña",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "name": "reportes_view_export_sse",
+      "title": "Vista de Reportes: filtro, tabla anidada, exportación y notificación SSE (sin polling)",
+      "description": "Corregido 09-ago-2026: el flujo es 100% asíncrono desde el día uno, no hay versión síncrona previa. ReporteFiltro (selección Área + Aplicación) dispara POST /api/reportes/generar (202 + id). ReporteTabla replica la estructura anidada real de paginas/reportes/vista.xhtml (Cargo → Rol → 4 categorías de suministro) con TanStack Table, poblada una vez el reporte está listo. Un hook useReportEvents se suscribe a GET /api/reportes/eventos vía EventSource (SSE) — nunca polling — y habilita el botón de descarga cuando llega el evento del id correspondiente. Depende de ../backend/feature_list.json → features 7 y 8 (reportes_generacion_async_kafka, reportes_notificacion_sse_y_descarga); si no están done, mockear el EventSource en desarrollo y dejarlo anotado en progress/current.md.",
+      "acceptance": [
+        "ReporteTabla reproduce fielmente la jerarquía Cargo→Rol→(Roles/Grupos/Inbox/DefaultInbox) vista en vista.xhtml, verificable con un test de componente usando un fixture de datos representativo",
+        "useReportEvents usa EventSource (o un mock equivalente en test) contra /api/reportes/eventos, no un setInterval/polling",
+        "El botón de exportar refleja los estados 'Generando…' -> 'Listo, descargar' cuando llega el evento SSE simulado en el test, sin recargar la página",
+        "Los botones de exportar PDF/Excel disparan la descarga real del blob devuelto por /api/reportes/{id}/descargar (o mock en test)",
+        "npm run build y npm test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "name": "tests_e2e_smoke_flujos_criticos",
+      "title": "Cobertura de tests de los flujos críticos",
+      "description": "Completar cobertura de tests de componente (Vitest + RTL) para los flujos que hayan quedado con cobertura parcial en features anteriores: login, un CRUD completo end-to-end (crear → aparece en listado → editar → refleja cambio), y el disparo de generación de reporte.",
+      "acceptance": [
+        "Existe un test de componente para el flujo de login completo (éxito y error de credenciales)",
+        "Existe un test end-to-end de componente para al menos un módulo CRUD completo (crear, listar, editar)",
+        "Existe un test que dispara la generación de un reporte y verifica el estado final de UI (descarga habilitada)",
+        "npm test sin errores, cobertura documentada en progress/current.md"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 10,
+      "name": "reporte_final_mejoras",
+      "title": "Reporte final de mejoras de la migración frontend",
+      "description": "Escribir MEJORAS.md en la raíz del proyecto frontend resumiendo la migración completa.",
+      "acceptance": [
+        "MEJORAS.md enumera: módulos migrados con paridad funcional confirmada contra las vistas legacy",
+        "Decisiones de UX que cambiaron respecto al legacy y por qué (ej. manejo de errores explícito, que antes no existía)",
+        "Cobertura de tests agregada por feature",
+        "Dependencias entre features del frontend y del backend que quedaron pendientes de sincronizar (ej. si el flujo async de reportes no se terminó de conectar)",
+        "Recomendaciones no implementadas en este pase",
+        "Todas las features 1-9 están en status done antes de escribir este reporte"
+      ],
+      "status": "done"
+    }
+  ]
+}

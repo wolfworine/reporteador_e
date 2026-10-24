@@ -1,0 +1,13 @@
+dist
+coverage
+node_modules
+
+# Archivos del arnes de migracion: no se formatean con este proyecto.
+AGENTS.md
+CLAUDE.md
+CHECKPOINTS.md
+feature_list.json
+feature_list.template.json
+docs/
+progress/
+.claude/

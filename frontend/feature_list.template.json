@@ -1,0 +1,23 @@
+{
+  "project": "entel-role-repository-frontend",
+  "description": "Migración de JSF 2.2 + PrimeFaces (vistas .xhtml renderizadas en servidor, sin separacion front/back) a React 19 + TypeScript + Vite, consumiendo la API REST del backend Quarkus. Generado a partir de docs/migration-plan.md siguiendo docs/plan-to-features.md.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "example_fix_startup_bug",
+      "title": "[EJEMPLO] Reemplazar por la primera feature real del plan",
+      "description": "Este es un feature de ejemplo. Bórralo y reemplázalo por las features reales generadas desde docs/migration-plan.md según la metodología de docs/plan-to-features.md.",
+      "acceptance": [
+        "Criterio verificable 1",
+        "Criterio verificable 2 (incluye test de regresión si es un bugfix)",
+        "npm run build clean compile sin errores"
+      ],
+      "status": "pending"
+    }
+  ]
+}

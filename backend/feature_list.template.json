@@ -1,0 +1,23 @@
+{
+  "project": "entel-role-repository-backend",
+  "description": "Migración de JSF 2.2 + PrimeFaces 5.2 + Spring 4 + EclipseLink JPA + iText 5/POI 3.7 sobre MySQL 5.6, Java 7/8, Tomcat 7 (2015, cliente Entel) a Quarkus 3.x + Java 21 (Virtual Threads) + Kafka (SmallRye Reactive Messaging) + DynamoDB vía LocalStack en local + HashiCorp Vault para secretos. Generado a partir de docs/migration-plan.md siguiendo docs/plan-to-features.md.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "example_fix_startup_bug",
+      "title": "[EJEMPLO] Reemplazar por la primera feature real del plan",
+      "description": "Este es un feature de ejemplo. Bórralo y reemplázalo por las features reales generadas desde docs/migration-plan.md según la metodología de docs/plan-to-features.md.",
+      "acceptance": [
+        "Criterio verificable 1",
+        "Criterio verificable 2 (incluye test de regresión si es un bugfix)",
+        "mvn clean compile sin errores"
+      ],
+      "status": "pending"
+    }
+  ]
+}

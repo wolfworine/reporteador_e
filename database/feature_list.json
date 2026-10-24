@@ -1,0 +1,90 @@
+{
+  "project": "entel-role-repository-database-migration",
+  "description": "Diseño de esquema DynamoDB y migración de los datos reales del sistema WiseVision Role Repository Basic (cliente Entel), desde MySQL 5.6 (consulta.sql + dumps reales) hacia DynamoDB vía LocalStack, con una herramienta CLI en Java 21. Generado a partir de docs/migration-plan.md siguiendo docs/plan-to-features.md.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "bootstrap_migration_cli",
+      "title": "Bootstrap de la herramienta de migración (Java 21 / Maven CLI)",
+      "description": "Proyecto Maven Java 21, dependencia AWS SDK v2 (DynamoDbAsyncClient), estructura de subcomandos (design-validate, parse-dump, migrate, verify). docker-compose.yml con LocalStack (servicio dynamodb).",
+      "acceptance": [
+        "mvn clean compile sin errores",
+        "docker-compose up -d localstack deja el servicio healthy",
+        "Un comando smoke (ej. `migrate --help`) corre y lista los subcomandos",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "design_dynamodb_schema",
+      "title": "Validar y finalizar el diseño de tablas DynamoDB (fuente canónica)",
+      "description": "Validar el diseño de docs/architecture.md contra los 5 access patterns reales del código extraído (repository/CargoRepository.java, AtributoRepository.java, y las 4 categorías de suministro). Crear las tablas RoleRepository y RoleRepositoryMenu en LocalStack vía el subcomando design-validate. Decidir y documentar el mecanismo de generación de IDs que reemplaza la tabla `sequence` (contador atómico vs UUID) por entidad.",
+      "acceptance": [
+        "docs/architecture.md queda actualizado con el diseño final validado, incluida la decisión de IDs por entidad",
+        "Existe un test de integración por cada uno de los 5 access patterns contra LocalStack",
+        "Las tablas se crean correctamente con `design-validate` de forma idempotente (correrlo dos veces no falla ni duplica)",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "parse_legacy_mysql_dump",
+      "title": "Parsear los dumps MySQL reales a estructuras Java tipadas",
+      "description": "Subcomando parse-dump que lee un archivo .sql estilo mysqldump (ej. `repositorio_entel/reposrito_roles_jsf 20150814 1214.sql`) y extrae las filas de cada tabla (area, cargo, ubicacion, aplicacion, rol, suministro, atributo, detalle, detalleinbox, usuario, login, estado, menu) como objetos Java tipados, sin conectarse a un MySQL real.",
+      "acceptance": [
+        "parse-dump sobre el dump real produce el conteo correcto de filas por tabla (referencia: 22 atributo, 3 rol, 1 cada uno del resto, según docs/migration-plan.md §1 — validar contra el archivo real, no solo confiar en el número documentado)",
+        "Test unitario con un fixture de dump reducido (extracto del real) que verifica el parseo campo a campo de al menos 3 tablas",
+        "Manejo explícito de valores NULL / campos opcionales del dump",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "migrate_data_mysql_to_dynamodb",
+      "title": "Cargar los datos parseados a DynamoDB de forma idempotente",
+      "description": "Subcomando migrate que toma la salida de parse-dump (feature 3) y el diseño de tablas (feature 2), transforma cada fila al formato de ítem DynamoDB (PK/SK single-table) y escribe con PutItem determinístico (misma PK/SK en cada corrida, nunca claves aleatorias) contra LocalStack por defecto.",
+      "acceptance": [
+        "migrate sobre el dump real puebla RoleRepository y RoleRepositoryMenu en LocalStack con el conteo de ítems esperado",
+        "Correr migrate dos veces seguidas no duplica ítems (test de idempotencia obligatorio)",
+        "El target AWS real solo se activa con --target=aws explícito, nunca por defecto, y no se ejercita en tests",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "data_migration_validation",
+      "title": "Validación post-migración: conteos e integridad referencial",
+      "description": "Subcomando verify que recorre los ítems migrados y valida: conteos por tipo de entidad coinciden con el dump fuente, y las relaciones lógicas se preservan (ej. todo Atributo referencia un Rol/Aplicacion/Suministro/Estado que existe como ítem, todo Suministro referencia un Rol existente).",
+      "acceptance": [
+        "verify reporta 0 referencias rotas sobre los datos migrados del dump real",
+        "verify falla explícitamente (exit code distinto de 0) si detecta una referencia rota, con mensaje claro de qué ítem y qué referencia falta",
+        "Test que inyecta deliberadamente una referencia rota en datos de prueba y verifica que verify la detecta",
+        "mvn test sin errores"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "name": "reporte_final_mejoras",
+      "title": "Reporte final de mejoras de la migración de datos",
+      "description": "Escribir MEJORAS.md en la raíz del proyecto database resumiendo el trabajo de este track.",
+      "acceptance": [
+        "MEJORAS.md documenta el diseño final de tablas/GSIs y por qué (referencia a docs/architecture.md)",
+        "Documenta la decisión de generación de IDs tomada (contador atómico vs UUID) y su justificación",
+        "Documenta conteos de datos migrados y resultado de la validación de integridad",
+        "Recomendaciones pendientes: credenciales/cuenta AWS real para producción, plan de migración de datos de producción reales (más allá del dump de prueba usado aquí)",
+        "Todas las features 1-5 están en status done antes de escribir este reporte"
+      ],
+      "status": "done"
+    }
+  ]
+}
