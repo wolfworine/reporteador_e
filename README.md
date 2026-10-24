@@ -112,8 +112,6 @@ sistema original y está en `seed-users.sh`):
 | `Raven@hotmail.com`           | Jorge Raven      |
 | `employer2@hotmail.com`       | hola hola        |
 
-> El CLI solo acepta `--target=localstack`; está bloqueado a propósito para no apuntar a AWS real.
-
 ## 4. Uso diario
 
 ```bash
