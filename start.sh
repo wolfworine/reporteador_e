@@ -92,6 +92,9 @@ for container in "${CONTAINERS[@]}"; do
   done
 done
 
+# --- 1b) Usuarios del sistema legado (idempotente) -------------------------
+"$ROOT_DIR/seed-users.sh" || warn "No se pudieron cargar los usuarios (ver mensajes arriba)."
+
 # --- 2) Frontend (Vite dev server, sigue en el host) ------------------------
 existing_frontend_pid="$(port_pid "$FRONTEND_PORT")"
 if [ -n "$existing_frontend_pid" ]; then
