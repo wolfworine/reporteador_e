@@ -94,6 +94,7 @@ done
 
 # --- 1b) Datos y usuarios del sistema legado (idempotentes) -----------------
 "$ROOT_DIR/seed-data.sh" || warn "No se pudieron cargar los datos del legado (ver mensajes arriba)."
+"$ROOT_DIR/seed-menu.sh" || warn "No se pudo cargar el menú (ver mensajes arriba)."
 "$ROOT_DIR/seed-users.sh" || warn "No se pudieron cargar los usuarios (ver mensajes arriba)."
 
 # --- 2) Frontend (Vite dev server, sigue en el host) ------------------------

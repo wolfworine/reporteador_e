@@ -1,4 +1,4 @@
-# Repositorio de Roles Entel — versión modernizada
+# Repositorio de Roles — versión modernizada
 
 Migración del sistema legado "WiseVision Role Repository Basic" (JSF 2.2 + PrimeFaces + Spring 4 + MySQL 5.6)
 a una arquitectura moderna. El repositorio tiene tres componentes:
@@ -77,11 +77,12 @@ Cuando termina, estas URLs responden:
 
 ## 3. Cargar datos
 
-La base arranca **vacía** y `start.sh` la llena sola, en dos pasos idempotentes (se pueden repetir sin duplicar):
+La base arranca **vacía** y `start.sh` la llena sola, en tres pasos idempotentes (se pueden repetir sin duplicar):
 
 | Script | Qué carga | Origen |
 |---|---|---|
 | `seed-data.sh` | Áreas, cargos, ubicaciones, aplicación, roles, suministros y atributos (~17.873 items) | Dump MySQL legado `database/seed/legacy-dump.sql`, migrado a DynamoDB con el CLI de `database/` |
+| `seed-menu.sh` | Los 10 ítems del menú | API `POST /api/menu` (el dump principal no trae la tabla `menu`) |
 | `seed-users.sh` | Los 4 usuarios del legado | API `POST /api/usuarios` (el CLI no migra la tabla `usuario`) |
 
 La primera vez `seed-data.sh` compila el CLI (necesita JDK 21). Si ya hay datos, no hace nada.
@@ -98,6 +99,9 @@ java -jar database/target/migration-cli.jar verify  "/ruta/al/dump.sql" --target
 ```
 
 Los datos persisten en el volumen Docker `localstack-data` y sobreviven a `./stop.sh`.
+
+**Estado de referencia (rollback):** la base debe contener solo 17.873 items del dump + 10 ítems de menú + 4 usuarios.
+Si hay datos de más (p. ej. reportes generados en pruebas), `./reset-data.sh` borra el volumen y recarga exactamente eso.
 El CLI solo acepta `--target=localstack`; está bloqueado a propósito para no apuntar a AWS real.
 
 ### 3.2 Iniciar sesión
@@ -161,7 +165,7 @@ Configuración del frontend: copiar `frontend/.env.example` a `.env` si el backe
 | Login falla o los módulos salen vacíos | Los usuarios los crea `start.sh`; si faltan, ejecutar `./seed-users.sh`. Si los módulos salen vacíos, `./seed-data.sh --force`. |
 | `mvn test` en `database/` borra los datos del backend | Esos tests usan el mismo LocalStack `:4566`. Ejecutar `./stop.sh` antes de correrlos. |
 | En Windows `npm run dev` dice "'vite' no se reconoce" | Usar `./start.sh`, que invoca Vite directamente con `node`. |
-| El backend queda `unhealthy` | `docker logs entel-role-repository-backend`; el arranque de LocalStack/Kafka puede tardar un minuto. |
+| El backend queda `unhealthy` | `docker compose -f backend/docker-compose.yml logs backend`; el arranque de LocalStack/Kafka puede tardar un minuto. |
 
 ## 7. Documentación por componente
 
