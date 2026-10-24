@@ -77,21 +77,12 @@ Cuando termina, estas URLs responden:
 
 ## 3. Cargar datos
 
-La base arranca **vacía**. Hay dos pasos: crear un usuario para entrar, y (opcional) cargar los datos reales del legado.
+La base arranca **vacía**: no hay usuarios ni datos hasta migrar el dump del sistema legado. Los usuarios para entrar
+vienen en ese mismo dump.
 
-### 3.1 Crear el usuario administrador
+### 3.1 Migrar el dump MySQL legado
 
-```bash
-curl -X POST http://localhost:8080/api/usuarios \
-  -H "Content-Type: application/json" \
-  -d '{"nombres":"Admin","apellidos":"Demo","email":"admin@entel.demo","password":"Demo1234!","tipo":"ADMINISTRADOR"}'
-```
-
-Luego se entra en http://localhost:5173 con `admin@entel.demo` / `Demo1234!`.
-
-### 3.2 Migrar el dump MySQL legado (opcional)
-
-Sin esto los módulos (Áreas, Cargos, Roles, Ubicaciones, etc.) aparecen vacíos. El dump `.sql` del sistema
+Sin esto no hay usuarios y los módulos (Áreas, Cargos, Roles, Ubicaciones, etc.) aparecen vacíos. El dump `.sql` del sistema
 legado **no está en este repositorio**; hay que pedirlo al equipo y tenerlo en disco.
 
 ```bash
@@ -105,8 +96,20 @@ java -jar database/target/migration-cli.jar migrate "/ruta/al/dump.sql" --target
 java -jar database/target/migration-cli.jar verify "/ruta/al/dump.sql" --target=localstack
 ```
 
-Con el dump de referencia se cargan unos 17.873 items (áreas, cargos, ubicaciones, roles, suministros y atributos).
+Con el dump de referencia se cargan unos 17.873 items (áreas, cargos, ubicaciones, roles, suministros y atributos) y los usuarios.
 Los datos persisten en el volumen Docker `localstack-data`, así que sobreviven a `./stop.sh` y a reinicios.
+
+### 3.2 Iniciar sesión
+
+Con los datos migrados, entrar en http://localhost:5173 con alguno de los usuarios del legado
+(la contraseña es la del sistema original; pedirla al equipo):
+
+| Email                         | Nombre           |
+|-------------------------------|------------------|
+| `admin@wisevisioncorp.com`    | Mark Falcon      |
+| `employer@wisevisioncorp.com` | Cesar Valenzuela |
+| `Raven@hotmail.com`           | Jorge Raven      |
+| `employer2@hotmail.com`       | hola hola        |
 
 > El CLI solo acepta `--target=localstack`; está bloqueado a propósito para no apuntar a AWS real.
 
@@ -156,7 +159,7 @@ Configuración del frontend: copiar `frontend/.env.example` a `.env` si el backe
 | `start.sh` dice "Docker no está corriendo" | Encender Docker Desktop y reintentar. |
 | `docker compose build backend` falla por falta de `target/quarkus-app` | Es la primera vez: usar `./start.sh --build`. |
 | Puerto 4566 / 8080 / 5173 ocupado | Algo más lo está usando; cerrarlo o ejecutar `./stop.sh`. |
-| Login falla o los módulos salen vacíos | Falta crear el usuario (3.1) o migrar el dump (3.2). |
+| Login falla o los módulos salen vacíos | Falta migrar el dump (3.1); los usuarios vienen en él. |
 | `mvn test` en `database/` borra los datos del backend | Esos tests usan el mismo LocalStack `:4566`. Ejecutar `./stop.sh` antes de correrlos. |
 | En Windows `npm run dev` dice "'vite' no se reconoce" | Usar `./start.sh`, que invoca Vite directamente con `node`. |
 | El backend queda `unhealthy` | `docker logs entel-role-repository-backend`; el arranque de LocalStack/Kafka puede tardar un minuto. |
