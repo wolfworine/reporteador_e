@@ -77,28 +77,28 @@ Cuando termina, estas URLs responden:
 
 ## 3. Cargar datos
 
-La base arranca **vacía**. Los **usuarios** del sistema legado se crean solos: `start.sh` ejecuta `seed-users.sh`
-cuando el backend está listo (idempotente, se puede correr las veces que haga falta). El resto de los datos
-(áreas, cargos, roles, etc.) se carga migrando el dump, paso 3.1.
+La base arranca **vacía** y `start.sh` la llena sola, en dos pasos idempotentes (se pueden repetir sin duplicar):
 
-### 3.1 Migrar el dump MySQL legado
+| Script | Qué carga | Origen |
+|---|---|---|
+| `seed-data.sh` | Áreas, cargos, ubicaciones, aplicación, roles, suministros y atributos (~17.873 items) | Dump MySQL legado `database/seed/legacy-dump.sql`, migrado a DynamoDB con el CLI de `database/` |
+| `seed-users.sh` | Los 4 usuarios del legado | API `POST /api/usuarios` (el CLI no migra la tabla `usuario`) |
 
-Sin esto los módulos (Áreas, Cargos, Roles, Ubicaciones, etc.) aparecen vacíos. El dump `.sql` del sistema
-legado **no está en este repositorio**; hay que pedirlo al equipo y tenerlo en disco.
+La primera vez `seed-data.sh` compila el CLI (necesita JDK 21). Si ya hay datos, no hace nada.
+
+### 3.1 Recargar o migrar otro dump a mano
 
 ```bash
-# Compilar el CLI (una sola vez)
+./seed-data.sh --force     # vuelve a cargar database/seed/legacy-dump.sql
+
+# Otro dump distinto:
 backend/mvnw -q -f database/pom.xml package -DskipTests
-
-# Migrar (el stack del paso 2 debe estar arriba: usa el LocalStack de :4566)
 java -jar database/target/migration-cli.jar migrate "/ruta/al/dump.sql" --target=localstack
-
-# Comprobar que lo cargado coincide con el dump
-java -jar database/target/migration-cli.jar verify "/ruta/al/dump.sql" --target=localstack
+java -jar database/target/migration-cli.jar verify  "/ruta/al/dump.sql" --target=localstack
 ```
 
-Con el dump de referencia se cargan unos 17.873 items (áreas, cargos, ubicaciones, roles, suministros y atributos).
-Los datos persisten en el volumen Docker `localstack-data`, así que sobreviven a `./stop.sh` y a reinicios.
+Los datos persisten en el volumen Docker `localstack-data` y sobreviven a `./stop.sh`.
+El CLI solo acepta `--target=localstack`; está bloqueado a propósito para no apuntar a AWS real.
 
 ### 3.2 Iniciar sesión
 
@@ -160,7 +160,7 @@ Configuración del frontend: copiar `frontend/.env.example` a `.env` si el backe
 | `start.sh` dice "Docker no está corriendo" | Encender Docker Desktop y reintentar. |
 | `docker compose build backend` falla por falta de `target/quarkus-app` | Es la primera vez: usar `./start.sh --build`. |
 | Puerto 4566 / 8080 / 5173 ocupado | Algo más lo está usando; cerrarlo o ejecutar `./stop.sh`. |
-| Login falla o los módulos salen vacíos | Los usuarios los crea `start.sh`; si faltan, ejecutar `./seed-users.sh`. Los módulos vacíos requieren migrar el dump (3.1). |
+| Login falla o los módulos salen vacíos | Los usuarios los crea `start.sh`; si faltan, ejecutar `./seed-users.sh`. Si los módulos salen vacíos, `./seed-data.sh --force`. |
 | `mvn test` en `database/` borra los datos del backend | Esos tests usan el mismo LocalStack `:4566`. Ejecutar `./stop.sh` antes de correrlos. |
 | En Windows `npm run dev` dice "'vite' no se reconoce" | Usar `./start.sh`, que invoca Vite directamente con `node`. |
 | El backend queda `unhealthy` | `docker logs entel-role-repository-backend`; el arranque de LocalStack/Kafka puede tardar un minuto. |
